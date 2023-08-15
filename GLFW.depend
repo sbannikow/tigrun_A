@@ -1,0 +1,81 @@
+# depslib dependency file v1.0
+1610959102 source:d:\pr\glfw\main.c
+	<GL/glew.h>
+	<GLFW/glfw3.h>
+
+1615996520 source:d:\pr\glfw\main.cpp
+	<iostream>
+	<map>
+	<string>
+	<tchar.h>
+	<GL/glew.h>
+	<GLFW/glfw3.h>
+	"shader.h"
+	"stb_image.h"
+	<cstdio>
+	<glm/glm.hpp>
+	<glm/gtc/matrix_transform.hpp>
+	<glm/gtc/type_ptr.hpp>
+	<glm/gtx/intersect.hpp>
+	<vector>
+	<math.h>
+	<ft2build.h>
+	"ObjLoader.h"
+	"vboIndexer.h"
+	"hMoving.h"
+
+1612446916 d:\pr\glfw\shader.h
+	<string>
+	<fstream>
+	<sstream>
+	<iostream>
+	<GL/glew.h>
+
+1612979700 source:d:\pr\glfw\stb_image.cpp
+	"stb_image.h"
+
+1594640766 d:\pr\glfw\stb_image.h
+	"stb_image.h"
+	<stdio.h>
+	<stdlib.h>
+	<stdarg.h>
+	<stddef.h>
+	<stdlib.h>
+	<string.h>
+	<limits.h>
+	<math.h>
+	<stdio.h>
+	<assert.h>
+	<stdint.h>
+	<emmintrin.h>
+	<intrin.h>
+	<arm_neon.h>
+
+1613116822 d:\pr\glfw\objloader.h
+	<string>
+	<cstring>
+	<vector>
+	<glm/common.hpp>
+	<glm/glm.hpp>
+
+1613065837 d:\pr\glfw\vboindexer.h
+	<vector>
+	<glm/glm.hpp>
+
+1615825764 source:d:\pr\glfw\vboindexer.cpp
+	"vboIndexer.h"
+
+1613668195 source:d:\pr\glfw\objloader.cpp
+	"ObjLoader.h"
+
+1614707242 source:d:\pr\glfw\moving.cpp
+	"hMoving.h"
+
+1614692596 d:\pr\glfw\hmoving.h
+	<iostream>
+	<GL/glew.h>
+	<GLFW/glfw3.h>
+	<glm/glm.hpp>
+	<glm/gtc/matrix_transform.hpp>
+	<glm/gtc/type_ptr.hpp>
+

@@ -1,0 +1,730 @@
+#include <iostream>
+#include <map>
+#include <string>
+
+// GLEW
+#define GLEW_STATIC
+
+#include <GL/glew.h>
+
+
+#define FOURCC_DXT1 827611204
+#define FOURCC_DXT3 861165636
+#define FOURCC_DXT5 894720068
+
+#define M_PI 3.14159265358979323846
+
+// GLFW
+#include <GLFW/glfw3.h>
+
+#include "shader.h"
+#include "stb_image.h"
+
+#include <cstdio>
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
+#include <vector>
+
+
+#include <ft2build.h>
+#include FT_FREETYPE_H
+
+
+
+
+#include "ObjLoader.h"
+#include "vboIndexer.h"
+#include "hMoving.h"
+
+
+
+
+
+
+
+// Function prototypes
+void RenderText(shader &shader, std::string text, GLfloat x, GLfloat y, GLfloat scale, glm::vec3 color);
+void key_callback(GLFWwindow* window, int key, int scancode, int action, int mode);
+void key_callback_w1(GLFWwindow* window, int key, int scancode, int action, int mode);
+void win1_closeCallback(GLFWwindow* window);
+GLFWwindow* window1;
+GLFWwindow* window;
+GLuint loadDDS(const char * imagepath);
+
+GLchar sName[32] = {0};
+
+std::vector< glm::vec3 > vertices;
+std::vector< glm::vec2 > uvs;
+std::vector< glm::vec3 > normals; // Won't be used at the moment.
+glm::vec3 camDir = glm::vec3(0.0, 2.0, 10.0);
+glm::vec3 camPos = glm::vec3(30.0, 2.0, 0.0);
+glm::vec3 camUp = glm::vec3(0.0, 1.0, 0.0);
+
+std::vector<unsigned short> g_indices;
+std::vector<unsigned short> g_indices2;
+
+std::vector<glm::vec4> vInd;
+GLint g_UV_el[512] = {0};
+// Window dimensions
+const GLuint WIDTH = 800, HEIGHT = 600;
+GLdouble wX = WIDTH/2, wY = HEIGHT/2;
+GLfloat camX = 0.0f, camY = 0.0f, camZ = 0.0f;
+GLfloat angleX = 0, angleY = 0, WX= -200.0, WY= 300.0f;
+GLdouble nTime=0, dTime=0, lTime=0, t_wX=0, t_wY=0;
+GLint frame = 0, loop = 1, actWin = 0;
+
+GLfloat xOffset = 0.0f;
+
+bool iKey[256];
+GLfloat speed = 0.09f, s = 0.05f;
+
+GLuint VBO[3], VAO[3], EBO[3], TBO[3];
+
+struct Character {
+    GLuint cTexID;
+    glm::ivec2 cSize;
+    glm::ivec2 cBearing;
+    GLuint cAdvance;
+};
+
+std::map<GLchar, Character> Characters;
+
+
+
+// The MAIN function, from here we start the application and run the game loop
+int main()
+{
+
+    // Init GLFW
+    glfwInit();
+
+
+
+
+
+    // Set all the required options for GLFW
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+    glfwWindowHint(GLFW_RESIZABLE, GL_FALSE);
+
+    // Create a GLFWwindow object that we can use for GLFW's functions
+    //glfwWindowHint(GLFW_DECORATED, NULL); // Remove the border and titlebar..
+    window = glfwCreateWindow(WIDTH, HEIGHT, "LearnOpenGL", nullptr, nullptr);
+
+    /*GLFWmonitor* monitor = glfwGetPrimaryMonitor();
+    const GLFWvidmode* mode = glfwGetVideoMode(monitor);
+
+
+
+
+    glfwSetWindowMonitor(window, monitor, 0, 0, WIDTH, HEIGHT, mode->refreshRate);*/
+    glfwMakeContextCurrent(window);
+
+
+
+     // Set the required callback functions
+    glfwSetKeyCallback(window, key_callback);
+    //glfwSetKeyCallback(window1, key_callback_w1);
+    //glfwSetWindowCloseCallback(window1, win1_closeCallback);
+
+    // Set this to true so GLEW knows to use a modern approach to retrieving function pointers and extensions
+    glewExperimental = GL_TRUE;
+    // Initialize GLEW to setup the OpenGL Function pointers
+    glewInit();
+
+    FT_Library ft;
+    if (FT_Init_FreeType(&ft))
+    std::cout << "ERROR::FREETYPE: Could not init FreeType Library" << std::endl;
+    FT_Face face;
+    if (FT_New_Face(ft, "arialbd.ttf", 0, &face))
+    std::cout << "ERROR::FREETYPE: Failed to load font" << std::endl;
+
+
+
+    glEnable(GL_TEXTURE_2D);
+   // glEnable(GL_CULL_FACE);
+    glEnable(GL_DEPTH_TEST);
+
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+
+
+    // Define the viewport dimensions
+    glViewport(0, 0, WIDTH, HEIGHT);
+
+
+
+
+
+    shader mShader("shader.vs", "shader.frag");
+    shader txtShader("txtShader.vs", "txtShader.frag");
+
+
+    // Set up vertex data (and buffer(s)) and attribute pointers
+    /*GLfloat vertices[] = {
+        // Positions          // Colors           // Texture Coords
+         1.0f,  1.0f, 0.0f,
+         1.0f, -1.0f, 0.0f,
+        -1.0f, -1.0f, 0.0f,
+        -1.0f,  1.0f, 0.0f
+    };*/
+
+    GLfloat tUV[] = {
+        1.0f, 1.0f,
+        0.0f, 0.0f,
+        0.0f, 1.0f,
+        1.0f, 0.0f
+
+    };
+
+    GLuint indices[] = {  // Note that we start from 0!
+        0, 1, 3, // First Triangle
+        1, 2, 3  // Second Triangle
+    };
+
+
+
+
+    std::vector<glm::vec3> indexed_vertices;
+    std::vector<glm::vec2> indexed_uvs;
+    std::vector<glm::vec3> indexed_normals;
+    std::vector< glm::vec3 > vertices2;
+    std::vector< glm::vec2 > uvs2;
+    std::vector< glm::vec3 > normals2; // Won't be used at the moment.
+    std::vector<glm::vec3> indexed_vertices2;
+    std::vector<glm::vec2> indexed_uvs2;
+    std::vector<glm::vec3> indexed_normals2;
+
+
+    glGenVertexArrays(3, VAO);
+    glGenBuffers(3, VBO);
+    glGenBuffers(3, EBO);
+    glGenBuffers(3, TBO);
+
+
+
+
+
+    bool res = ObjLoader::LoadObj("boxh.obj", vertices2, uvs2, normals2);
+    if (!res) return 0;
+
+    indexVBO_slow(vertices2, uvs2, normals2, g_indices, indexed_vertices2, indexed_uvs2, indexed_normals2);
+
+     // Bind the Vertex Array Object first, then bind and set vertex buffer(s) and attribute pointer(s).
+    glBindVertexArray(VAO[0]);
+
+    glBindBuffer(GL_ARRAY_BUFFER, VBO[0]);
+    glBufferData(GL_ARRAY_BUFFER, indexed_vertices2.size()*sizeof(glm::vec3), &indexed_vertices2[0], GL_STATIC_DRAW);
+
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat), (GLvoid*)0);
+
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO[0]);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, g_indices.size() * sizeof(unsigned short), &g_indices[0], GL_STATIC_DRAW);
+
+    glBindBuffer(GL_ARRAY_BUFFER, TBO[0]);
+    glBufferData(GL_ARRAY_BUFFER, indexed_uvs2.size()*sizeof(glm::vec2), &indexed_uvs2[0], GL_STATIC_DRAW);
+    //glBufferData(GL_ARRAY_BUFFER, 6*sizeof(float), tUV, GL_STATIC_DRAW);
+
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(GLfloat), 0);
+
+
+    glEnableVertexAttribArray(0);
+    glEnableVertexAttribArray(1);
+
+
+
+
+
+    glBindBuffer(GL_ARRAY_BUFFER, 0); // Note that this is allowed, the call to glVertexAttribPointer registered VBO as the currently bound vertex buffer object so afterwards we can safely unbind
+    glBindVertexArray(0);
+
+    bool res2 = ObjLoader::LoadObj("box.obj", vertices, uvs, normals);
+    if (!res2) return 0;
+
+    indexVBO_slow(vertices, uvs, normals, g_indices2, indexed_vertices, indexed_uvs, indexed_normals);
+
+     // Bind the Vertex Array Object first, then bind and set vertex buffer(s) and attribute pointer(s).
+    glBindVertexArray(VAO[1]);
+
+    glBindBuffer(GL_ARRAY_BUFFER, VBO[1]);
+    glBufferData(GL_ARRAY_BUFFER, indexed_vertices.size()*sizeof(glm::vec3), &indexed_vertices[0], GL_STATIC_DRAW);
+
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat), (GLvoid*)0);
+
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO[1]);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, g_indices2.size() * sizeof(unsigned short), &g_indices[0], GL_STATIC_DRAW);
+
+    glBindBuffer(GL_ARRAY_BUFFER, TBO[1]);
+    glBufferData(GL_ARRAY_BUFFER, indexed_uvs.size()*sizeof(glm::vec2), &indexed_uvs[0], GL_STATIC_DRAW);
+    //glBufferData(GL_ARRAY_BUFFER, 6*sizeof(float), tUV, GL_STATIC_DRAW);
+
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(GLfloat), 0);
+
+
+
+
+    glEnableVertexAttribArray(0);
+    glEnableVertexAttribArray(1);
+
+    glBindBuffer(GL_ARRAY_BUFFER, 0); // Note that this is allowed, the call to glVertexAttribPointer registered VBO as the currently bound vertex buffer object so afterwards we can safely unbind
+    glBindVertexArray(0);
+
+
+    GLfloat zRot = 0.0f;
+    GLfloat xCube = -2.0f;
+    float zZ = 30.0f;
+    float yY =2.0f;
+    float xX = 0.0f;
+    float fov = 45.0f;
+
+
+    GLuint texture[3], texDDS;
+    glGenTextures(3, texture);
+    glBindTexture(GL_TEXTURE_2D, texture[0]); // все последующие GL_TEXTURE_2D-операции теперь будут влиять на данный текстурный объект
+
+    // Установка параметров наложения текстуры
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT); // установка метода наложения текстуры GL_REPEAT (стандартный метод наложения)
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+
+    // Установка параметров фильтрации текстуры
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+
+
+    // Загрузка изображения, создание текстуры и генерирование мипмап-уровней
+    int width, height, nrChannels;
+    unsigned char* data = stbi_load("texture.tga", &width, &height, &nrChannels, 0);
+    if (data)
+    {
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, data);
+        glGenerateMipmap(GL_TEXTURE_2D);
+    }
+    else
+    {
+        std::cout << "Failed to load texture" << std::endl;
+    }
+    stbi_image_free(data);
+
+
+    glBindTexture(GL_TEXTURE_2D, texture[1]); // все последующие GL_TEXTURE_2D-операции теперь будут влиять на данный текстурный объект
+
+    // Установка параметров наложения текстуры
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT); // установка метода наложения текстуры GL_REPEAT (стандартный метод наложения)
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+
+    // Установка параметров фильтрации текстуры
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+
+
+    // Загрузка изображения, создание текстуры и генерирование мипмап-уровней
+    data = stbi_load("t.tga", &width, &height, &nrChannels, 0);
+    if (data)
+    {
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, data);
+        glGenerateMipmap(GL_TEXTURE_2D);
+    }
+    else
+    {
+        std::cout << "Failed to load texture" << std::endl;
+    }
+    stbi_image_free(data);
+
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+
+
+    FT_Set_Pixel_Sizes(face, 0, 32);
+
+
+
+    unsigned char x;
+    for (GLubyte c = 0; c < 255; c++)
+    {
+
+        // Load character glyph
+        if (FT_Load_Char(face, c, FT_LOAD_RENDER))
+        {
+            std::cout << "ERROR::FREETYTPE: Failed to load Glyph" << std::endl;
+            continue;
+        }
+
+        // Generate texture
+
+
+        /*for(int i = 0; i < face->glyph->bitmap.rows; i++)
+        {
+            for(int y = 0; y < face->glyph->bitmap.width; y++){
+                x = face->glyph->bitmap.buffer[i*face->glyph->bitmap.width+y];
+                if(x==0) putchar(' ');
+                else if(c<128) putchar('+');
+                else putchar('0');
+            }
+            putchar('\n');
+        }*/
+
+        GLuint tText;
+        glGenTextures(1, &tText);
+        glBindTexture(GL_TEXTURE_2D, tText);
+        glTexImage2D(
+            GL_TEXTURE_2D,
+            0,
+            GL_RED,
+            face->glyph->bitmap.width,
+            face->glyph->bitmap.rows,
+            0,
+            GL_RED,
+            GL_UNSIGNED_BYTE,
+            face->glyph->bitmap.buffer
+        );
+
+        // Set texture options
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        // Now store character for later use
+        Character character = {
+            tText,
+            glm::ivec2(face->glyph->bitmap.width, face->glyph->bitmap.rows),
+            glm::ivec2(face->glyph->bitmap_left, face->glyph->bitmap_top),
+            face->glyph->advance.x
+        };
+
+        Characters.insert(std::pair<char, Character>(c, character));
+
+    }
+
+
+
+
+
+    glBindTexture(GL_TEXTURE_2D, 0);
+    FT_Done_Face(face);
+    FT_Done_FreeType(ft);
+
+    glBindVertexArray(VAO[2]);
+    glBindBuffer(GL_ARRAY_BUFFER, VBO[2]);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(GLfloat) * 6 * 4, NULL, GL_DYNAMIC_DRAW);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat), 0);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindVertexArray(0);
+
+
+
+
+    // Game loop
+    GLdouble timer = glfwGetTime();
+    //while (!glfwWindowShouldClose(window))
+    while (loop!=0)
+    {
+
+        // Check if any events have been activiated (key pressed, mouse moved etc.) and call corresponding response functions
+
+        glfwPollEvents();
+
+
+
+        nTime = glfwGetTime();
+        dTime += ((nTime - lTime)*500);
+        lTime = nTime;
+
+        // Render
+        // Clear the colorbuffer
+        glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
+         //gluPerspective( 45.0f, (GLfloat)WIDTH/(GLfloat)HEIGHT, 0.1f, 100.0f );
+        //glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+
+        // Draw the triangle
+
+
+
+
+
+
+        /*camZ = 10.0f*sin(angleY)*sin(angleX);
+        camX = 10.0f*cos(angleX)*sin(angleY);
+        camY = 10.0f*cos(angleY);*/
+
+
+        //camX = 10.0f*cos(angleX)*sin(angleY);
+        //camY = 10.0f*cos(angleY);
+
+
+
+        glm::mat4 modelview;
+        glm::mat4 matRotate;
+        glm::mat4 matTrans;
+
+        glm::mat4 projectionMatrix = glm::perspective(glm::radians(fov), float(WIDTH / HEIGHT), 0.1f, 1000.0f);
+       // glm::mat4 rotation         = glm::rotate(glm::mat4(1.0f), glm::radians(zRot), glm::vec3(1.0f , 1.0f , 0.0f)) ;
+        glm::mat4 view             = glm::lookAt(glm::vec3(camPos.x, 2.0, camPos.z), glm::vec3(camPos.x, 2.0, camPos.z) + (glm::normalize(camDir)), camUp);
+        glm::mat4 modelTransform   = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, 0.0f)) ;
+        GLint texLoc;
+        GLuint transformLoc;
+        GLuint projLoc;
+
+
+
+
+
+
+        //glUniformMatrix4fv(projectionLoc, 1, GL_FALSE, glm::value_ptr(projectionMatrix));
+       // GLint vertexColorLocation = glGetUniformLocation(mShader.program, "ourColor");
+
+
+        mShader.use();
+
+
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, texture[0]);
+
+        texLoc = glGetUniformLocation(mShader.program, "ourTexture");
+        glUniform1i(texLoc, 0);
+
+
+        glBindVertexArray(VAO[0]);
+        //not rotating cube
+        transformLoc = glGetUniformLocation(mShader.program, "uModelTranslate");
+
+        matRotate   =    glm::rotate(glm::mat4(1.0f), glm::radians(0.0f), glm::vec3(0.0f,1.0f,0.0f));
+        matTrans   = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, 0.0f)) ;
+        modelTransform = matTrans * matRotate;
+        modelview        =  projectionMatrix * view * modelTransform ;
+        glUniformMatrix4fv(transformLoc, 1, GL_FALSE, &modelview[0][0]);
+        glDrawElements(GL_TRIANGLES, g_indices.size(), GL_UNSIGNED_SHORT, 0);
+
+
+        glBindVertexArray(0);
+        glBindTexture(GL_TEXTURE_2D, 0);
+
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, texture[1]);
+        texLoc = glGetUniformLocation(mShader.program, "ourTexture");
+        glUniform1i(texLoc, 0);
+        glBindVertexArray(VAO[1]);
+        //not rotating cube
+        //transformLoc = glGetUniformLocation(mShader.program, "uModelTranslate");
+
+        matRotate   =    glm::rotate(glm::mat4(1.0f), glm::radians(zRot), glm::vec3(0.0f,1.0f,0.0f));
+        matTrans   = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 1.0f, 0.0f)) ;
+        modelTransform = matTrans * matRotate;
+        modelview        =  projectionMatrix * view * modelTransform ;
+        glUniformMatrix4fv(transformLoc, 1, GL_FALSE, &modelview[0][0]);
+
+        glDrawElements(GL_TRIANGLES, g_indices2.size(), GL_UNSIGNED_SHORT, 0);
+
+
+
+
+
+        glBindVertexArray(0);
+        glBindTexture(GL_TEXTURE_2D, 0);
+
+        glm::mat4 orthoProj = glm::ortho(0.0f, float(WIDTH), 0.0f, float(HEIGHT), 0.1f, 100.0f);
+
+        //txtShader.use();
+         projLoc = glGetUniformLocation(txtShader.program, "projection");
+        //not rotating cube
+        //transformLoc = glGetUniformLocation(mShader.program, "uModelTranslate");
+        matTrans   = glm::translate(glm::mat4(1.0f), glm::vec3(-1.0f, -0.7f, -1.0f));
+
+        RenderText(txtShader, "ПИДОР", 0.0f, 0.0f, 0.5f, glm::vec3(255, 0, 0));
+
+        modelview = orthoProj * matTrans;
+
+        glUniformMatrix4fv(projLoc, 1, GL_FALSE, &modelview[0][0]);
+
+
+        glBindVertexArray(0);
+
+
+
+
+        // Swap the screen buffers
+
+
+
+
+        if(dTime>=1.0){
+                zRot+= 0.1;
+
+
+        firstPersonMovingCalc(window, camDir, angleX, WX, WY);
+        if(iKey['W']) firstPersonMoveForward(angleX, camPos, 0.08f);
+        if(iKey['S']) firstPersonMoveBackward(angleX, camPos, 0.08f);
+        if(iKey['A']) firstPersonStrafeLeft(camDir, camUp, camPos, 0.08f);
+        if(iKey['D']) firstPersonStrafeRight(camDir, camUp, camPos, 0.08f);
+
+
+        /*glfwGetCursorPos(window, &wX, &wY);
+
+        deltaX = wX - t_wX;
+        deltaY = t_wY - wY;
+        WX += deltaX*0.08;
+        WY += deltaY*0.08;
+
+        t_wX = WIDTH/2;
+        t_wY = HEIGHT/2;
+
+
+
+        if(WY<182) WY=182;
+        if(WY>358) WY=358;
+
+
+
+        camDir.z = 5*sin(glm::radians(WY))*sin(glm::radians(WX));
+        camDir.x = 5*cos(glm::radians(WX))*sin(glm::radians(WY));
+        camDir.y = 5*cos(glm::radians(WY));
+
+
+                    if(iKey['W']) {camPos.z-= sin(glm::radians(WX))*speed; camPos.x -=cos(glm::radians(WX))*speed;}
+                    if(iKey['S']) {camPos.z+= sin(glm::radians(WX))*speed; camPos.x +=cos(glm::radians(WX))*speed;}
+                    if(iKey['A']) camPos-= glm::normalize(glm::cross(camDir, camUp))*speed;
+                    if(iKey['D']) camPos+= glm::normalize(glm::cross(camDir, camUp))*speed;
+
+        if (iKey[GLFW_KEY_UP]) fov += s;
+        if (iKey[GLFW_KEY_DOWN]) fov -= s;
+
+          /*if(speed!=0){
+                       // cz+= sin(cAngle)*speed;
+                        //cx+= cos(cAngle)*speed;
+                        zZ += sin(angleY)*sin(angleX)*speed;
+                        xX += cos(angleX)*sin(angleY)*speed;
+                        printf("%f:%f\n", angleX, zZ);
+                        }*/
+
+
+                        //glfwSetCursorPos(window, WIDTH/2, HEIGHT/2);
+
+
+
+
+
+        dTime = 0;
+
+        }
+
+        glfwSwapBuffers(window);
+
+
+
+
+
+
+
+    }
+
+    // Properly de-allocate all resources once they've outlived their purpose
+    glDeleteVertexArrays(3, VAO);
+    glDeleteBuffers(3, VBO);
+    glDeleteBuffers(3, EBO);
+    glDeleteBuffers(3, TBO);
+    glDeleteTextures(3, texture);
+    Characters.clear();
+
+    // Terminate GLFW, clearing any resources allocated by GLFW.
+    glfwTerminate();
+    return 0;
+}
+
+// Is called whenever a key is pressed/released via GLFW
+void key_callback(GLFWwindow* window, int key, int scancode, int action, int mode)
+{
+    if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS){
+        loop = 0;
+        glfwSetWindowShouldClose(window, GL_TRUE);
+    }
+
+
+        if(action == GLFW_PRESS) iKey[key] = true;
+        if(action == GLFW_RELEASE) {iKey[key] = false;}
+    //if (key == GLFW_KEY_W && action == GLFW_PRESS) xOffset += 0.01;
+    //if (key == GLFW_KEY_S && action == GLFW_PRESS) xOffset -= 0.01;
+}
+
+void key_callback_w1(GLFWwindow* window, int key, int scancode, int action, int mode)
+{
+    if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS){
+            loop = 0;
+        glfwSetWindowShouldClose(window, GL_TRUE);
+    }
+
+        if(action == GLFW_PRESS) iKey[key] = true;
+        if(action == GLFW_RELEASE) {iKey[key] = false;}
+    if (key == GLFW_KEY_W && action == GLFW_PRESS) printf("PRINT\n");
+    //if (key == GLFW_KEY_S && action == GLFW_PRESS) xOffset -= 0.01;
+}
+
+
+
+
+
+
+void win1_closeCallback(GLFWwindow* window)
+{
+
+    glfwSetWindowShouldClose(window, GL_TRUE);
+    glfwDestroyWindow(window);
+}
+
+void RenderText(shader &shader, std::string text, GLfloat x, GLfloat y, GLfloat scale, glm::vec3 color)
+{
+    // Activate corresponding render state
+    shader.use();
+    GLuint tLoc;
+    //glActiveTexture(GL_TEXTURE0);
+    //glUniform3f(glGetUniformLocation(shader.program, "textColor"), color.x, color.y, color.z);
+    tLoc = glGetUniformLocation(shader.program, "textColor");
+    glUniform3f(tLoc, color.x, color.y, color.z);
+    glActiveTexture(GL_TEXTURE0);
+    glBindVertexArray(VAO[2]);
+
+    // Iterate through all characters
+    std::string::const_iterator c;
+    for (c = text.begin(); c != text.end(); c++)
+    {
+
+        Character ch = Characters[*c];
+
+        GLfloat xpos = x + ch.cBearing.x * scale;
+        GLfloat ypos = y - (ch.cSize.y - ch.cBearing.y) * scale;
+
+        GLfloat w = ch.cSize.x * scale;
+        GLfloat h = ch.cSize.y * scale;
+        // Update VBO for each character
+        GLfloat vertices[6][4] = {
+            { xpos,     ypos + h,   0.0, 0.0 },
+            { xpos,     ypos,       0.0, 1.0 },
+            { xpos + w, ypos,       1.0, 1.0 },
+
+            { xpos,     ypos + h,   0.0, 0.0 },
+            { xpos + w, ypos,       1.0, 1.0 },
+            { xpos + w, ypos + h,   1.0, 0.0 }
+        };
+        // Render glyph texture over quad
+        glBindTexture(GL_TEXTURE_2D, ch.cTexID);
+        // Update content of VBO memory
+        glBindBuffer(GL_ARRAY_BUFFER, VBO[2]);
+        glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(vertices), vertices); // Be sure to use glBufferSubData and not glBufferData
+
+        glBindBuffer(GL_ARRAY_BUFFER, 0);
+        // Render quad
+        glDrawArrays(GL_TRIANGLES, 0, 6);
+        // Now advance cursors for next glyph (note that advance is number of 1/64 pixels)
+        x += (ch.cAdvance >> 6) * scale; // Bitshift by 6 to get value in pixels (2^6 = 64 (divide amount of 1/64th pixels by 64 to get amount of pixels))
+    }
+    glBindVertexArray(0);
+    glBindTexture(GL_TEXTURE_2D, 0);
+}
